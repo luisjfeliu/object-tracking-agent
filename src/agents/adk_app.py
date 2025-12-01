@@ -3,7 +3,7 @@
 adk_app.py
 
 Lightweight ADK-ready loop that tails the IMX500 event log and wires it into
-Google's Agents Development Kit. This module is defensive: if `google-agents`
+Google's Agents Development Kit. This module is defensive: if `google-adk`
 is not installed, it will print a clear message instead of crashing.
 
 Features:
