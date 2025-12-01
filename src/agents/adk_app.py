@@ -46,36 +46,13 @@ except Exception as exc:  # pragma: no cover - defensive: import differs by SDK
     ADK_IMPORT_ERROR = f"google.agents unavailable: {exc}"
 
     try:
-        import google.adk.telemetry as _adk_telemetry  # type: ignore
-
-        def _resolve_adk_logger():
-            # Prefer an explicit logger object if exposed, otherwise accept a getter
-            if hasattr(_adk_telemetry, "logger"):
-                return _adk_telemetry.logger  # type: ignore[attr-defined]
-            if hasattr(_adk_telemetry, "get_logger"):
-                try:
-                    return _adk_telemetry.get_logger()  # type: ignore[attr-defined]
-                except Exception:
-                    pass
-            if hasattr(_adk_telemetry, "getLogger"):
-                try:
-                    return _adk_telemetry.getLogger()  # type: ignore[attr-defined]
-                except Exception:
-                    pass
-            return None
-
-        _adk_logger = _resolve_adk_logger()
+        from google.adk.telemetry import logger as _adk_logger  # type: ignore
 
         class AgentRuntime:  # type: ignore[override]
-            """Lightweight runtime wrapper using the `google-adk` telemetry hooks."""
+            """Lightweight runtime wrapper using the `google-adk` logger."""
 
             def log(self, message: str) -> None:
-                if hasattr(_adk_logger, "info"):
-                    _adk_logger.info(message)  # type: ignore[union-attr]
-                elif callable(_adk_logger):
-                    _adk_logger(message)
-                else:
-                    print(f"[ADK] {message}")
+                _adk_logger.info(message)
 
     except Exception as adk_exc:  # pragma: no cover - fallback failure
         ADK_IMPORT_ERROR = f"{ADK_IMPORT_ERROR}; google.adk unavailable: {adk_exc}"
