@@ -32,11 +32,31 @@ if REPO_ROOT.as_posix() not in sys.path:
 from src.agents.agents import Event, EventSummarizerAgent, parse_event_line
 from src.tracking.tracker import MultiObjectTracker
 
-# ADK imports are optional; handle missing dependency gracefully.
+# ADK imports are optional; handle missing dependency gracefully. Prefer the
+# modern `google-adk` package but keep compatibility with the older
+# `google-agents` runtime if it is present.
+AgentRuntime = None
+ADK_IMPORT_ERROR: Optional[str] = None
+
 try:
-    from google.agents import AgentRuntime  # type: ignore
-except Exception:  # pragma: no cover - purely defensive for missing SDK
-    AgentRuntime = None
+    from google.agents import AgentRuntime as _LegacyAgentRuntime  # type: ignore
+
+    AgentRuntime = _LegacyAgentRuntime
+except Exception as exc:  # pragma: no cover - defensive: import differs by SDK
+    ADK_IMPORT_ERROR = f"google.agents unavailable: {exc}"
+
+    try:
+        from google.adk.telemetry import logger as _adk_logger  # type: ignore
+
+        class AgentRuntime:  # type: ignore[override]
+            """Lightweight runtime wrapper using the `google-adk` logger."""
+
+            def log(self, message: str) -> None:
+                _adk_logger.info(message)
+
+    except Exception as adk_exc:  # pragma: no cover - fallback failure
+        ADK_IMPORT_ERROR = f"{ADK_IMPORT_ERROR}; google.adk unavailable: {adk_exc}"
+        AgentRuntime = None
 
 
 LOG_PATH = Path(os.environ.get("IMX500_LOG_PATH", Path.home() / "imx500_events.jsonl"))
@@ -112,7 +132,8 @@ async def run_event_loop(use_tracker: bool = False) -> None:
 async def run_with_adk(use_tracker: bool = False) -> None:
     """Entry for ADK runtime; falls back to standalone if ADK is unavailable."""
     if AgentRuntime is None:
-        print("google-agents (ADK) not installed. Falling back to standalone loop.")
+        extra = f" ({ADK_IMPORT_ERROR})" if ADK_IMPORT_ERROR else ""
+        print(f"ADK runtime unavailable{extra}. Falling back to standalone loop.")
         await run_event_loop(use_tracker=use_tracker)
         return
 
