@@ -1,0 +1,9 @@
+{"ts":"2024-03-01T12:00:00+00:00","event_type":"object_detected","details":{"frame_id":0,"raw_label":"car","category":"car","score":0.82,"bbox":[0.12,0.25,0.32,0.55]}}
+{"ts":"2024-03-01T12:00:00+00:00","event_type":"object_detected","details":{"frame_id":0,"raw_label":"person","category":"person","score":0.90,"bbox":[0.60,0.20,0.72,0.55]}}
+{"ts":"2024-03-01T12:00:01+00:00","event_type":"object_detected","details":{"frame_id":1,"raw_label":"car","category":"car","score":0.80,"bbox":[0.14,0.25,0.34,0.56]}}
+{"ts":"2024-03-01T12:00:01+00:00","event_type":"object_detected","details":{"frame_id":1,"raw_label":"person","category":"person","score":0.88,"bbox":[0.62,0.21,0.74,0.56]}}
+{"ts":"2024-03-01T12:00:02+00:00","event_type":"object_detected","details":{"frame_id":2,"raw_label":"bus","category":"bus","score":0.93,"bbox":[0.05,0.30,0.40,0.70]}}
+{"ts":"2024-03-01T12:00:02+00:00","event_type":"object_detected","details":{"frame_id":2,"raw_label":"car","category":"car","score":0.78,"bbox":[0.18,0.26,0.38,0.57]}}
+{"ts":"2024-03-01T12:00:03+00:00","event_type":"object_detected","details":{"frame_id":3,"raw_label":"bus","category":"bus","score":0.91,"bbox":[0.06,0.31,0.41,0.71]}}
+{"ts":"2024-03-01T12:00:03+00:00","event_type":"object_detected","details":{"frame_id":3,"raw_label":"car","category":"car","score":0.75,"bbox":[0.22,0.26,0.40,0.57]}}
+{"ts":"2024-03-01T12:00:03+00:00","event_type":"bus_detected","details":{"frame_id":3,"raw_label":"bus","category":"bus","score":0.91,"bbox":[0.06,0.31,0.41,0.71]}}
