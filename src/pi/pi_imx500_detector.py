@@ -44,6 +44,10 @@ BUS_WEBHOOK_URL = os.environ.get("BUS_WEBHOOK_URL")  # e.g. "http://desktop:8000
 # Optional forwarding of all events to a remote server
 EVENT_FORWARD_URL = os.environ.get("IMX500_FORWARD_URL")  # e.g. "http://desktop:8000/event"
 
+# Optional saving of frames when detections occur
+SAVE_IMAGES = bool(int(os.environ.get("IMX500_SAVE_IMAGES", "0")))
+IMAGE_DIR = Path(os.environ.get("IMX500_IMAGE_DIR", Path.home() / "imx500_images"))
+
 # Map raw labels → high-level categories we care about
 TARGET_LABELS = {
     "person": "person",
@@ -192,6 +196,22 @@ def log_event(event: Dict[str, Any]):
     with LOG_FILE.open("a") as f:
         f.write(line + "\n")
     forward_event(event_record)
+
+
+def save_frame(request, frame_id: int, label: str) -> None:
+    """
+    Optionally save the current frame to disk.
+    Uses Picamera2 request.save to avoid extra dependencies.
+    """
+    if not SAVE_IMAGES:
+        return
+    try:
+        IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+        filename = IMAGE_DIR / f"frame_{frame_id:06d}_{label}.jpg"
+        request.save("main", filename.as_posix())
+        logging.info("Saved frame to %s", filename)
+    except Exception as exc:
+        logging.debug("Failed to save frame: %s", exc)
 
 
 def process_detections(
@@ -454,6 +474,9 @@ def main() -> None:
                         # Bus-specific handling; adjust key name if your event schema differs
                         if event.get("category") == "bus":
                             handle_bus_event(event)
+
+                        # Optionally save the frame for the first detection in this frame
+                        save_frame(req, frame_id, event.get("raw_label", "det"))
 
                 frame_id += 1
 
