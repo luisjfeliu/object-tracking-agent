@@ -11,7 +11,9 @@ from ..tools.alert_tools import (
     format_bus_alert_message,
     should_send_alert,
     send_webhook_sync,
-    log_alert
+    log_alert,
+    set_debounce_window,
+    get_bus_track_statistics
 )
 
 
@@ -30,34 +32,62 @@ def create_bus_notification_agent():
 
 
 class BusNotificationHandler:
-    """Handler for bus notification logic."""
+    """
+    Handler for bus notification logic with enhanced debouncing.
 
-    def __init__(self):
+    Features:
+    - Track-based debouncing (same bus won't trigger multiple alerts)
+    - Configurable debounce window
+    - Rich alert messages with tracking info
+    - Image path support
+    """
+
+    def __init__(self, debounce_window: int = 30):
+        """
+        Initialize bus notification handler.
+
+        Args:
+            debounce_window: Time window in seconds between alerts for the same bus
+        """
         self.webhook_url = os.environ.get("ADK_BUS_WEBHOOK_URL")
+        self.debounce_window = debounce_window
+
+        # Set global debounce window
+        set_debounce_window(debounce_window)
+
+        logger.info(f"Bus agent initialized with {debounce_window}s debounce window")
 
     async def handle_bus_event(
         self,
-        event: Dict[str, Any]
+        event: Dict[str, Any],
+        track_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
-        Handle a bus detection event.
+        Handle a bus detection event with enhanced tracking.
 
         Args:
             event: Bus detection event dictionary
+            track_id: Optional tracking ID from object tracker
 
         Returns:
             Result of alert handling
         """
-        # Format the alert message
-        alert = format_bus_alert_message(event)
+        # Format the alert message with track ID
+        alert = format_bus_alert_message(event, track_id=track_id)
 
-        # Check debounce
-        debounce_key = "bus_alert"
-        if not should_send_alert(event, debounce_key):
+        # Enhanced debounce check with track ID
+        debounce_key = f"bus_alert_track_{track_id}" if track_id else "bus_alert"
+        if not should_send_alert(
+            event,
+            debounce_key=debounce_key,
+            track_id=track_id,
+            debounce_window=self.debounce_window
+        ):
             return {
                 "status": "debounced",
-                "message": "Alert skipped due to recent alert",
-                "alert": alert
+                "message": f"Alert debounced for track {track_id}" if track_id else "Alert debounced",
+                "alert": alert,
+                "track_id": track_id
             }
 
         # Log the alert
@@ -93,12 +123,13 @@ class BusNotificationHandler:
                 "message": "No webhook URL configured"
             }
 
-    def process(self, event: Dict[str, Any]) -> Dict[str, Any]:
+    def process(self, event: Dict[str, Any], track_id: Optional[int] = None) -> Dict[str, Any]:
         """
         Synchronous wrapper for event processing.
 
         Args:
             event: Event to process
+            track_id: Optional tracking ID
 
         Returns:
             Processing result
@@ -111,4 +142,13 @@ class BusNotificationHandler:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
-        return loop.run_until_complete(self.handle_bus_event(event))
+        return loop.run_until_complete(self.handle_bus_event(event, track_id=track_id))
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """
+        Get bus detection statistics.
+
+        Returns:
+            Statistics dictionary with tracking info
+        """
+        return get_bus_track_statistics()

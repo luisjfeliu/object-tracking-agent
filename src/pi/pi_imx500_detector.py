@@ -198,20 +198,33 @@ def log_event(event: Dict[str, Any]):
     forward_event(event_record)
 
 
-def save_frame(request, frame_id: int, label: str) -> None:
+def save_frame(request, frame_id: int, label: str, force: bool = False) -> str:
     """
     Optionally save the current frame to disk.
     Uses Picamera2 request.save to avoid extra dependencies.
+
+    Args:
+        request: Picamera2 request object
+        frame_id: Current frame number
+        label: Detection label for filename
+        force: Force save even if SAVE_IMAGES is False (for bus detections)
+
+    Returns:
+        Path to saved image, or empty string if not saved
     """
-    if not SAVE_IMAGES:
-        return
+    if not SAVE_IMAGES and not force:
+        return ""
+
     try:
         IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-        filename = IMAGE_DIR / f"frame_{frame_id:06d}_{label}.jpg"
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        filename = IMAGE_DIR / f"frame_{frame_id:06d}_{label}_{timestamp}.jpg"
         request.save("main", filename.as_posix())
         logging.info("Saved frame to %s", filename)
+        return str(filename)
     except Exception as exc:
         logging.debug("Failed to save frame: %s", exc)
+        return ""
 
 
 def process_detections(
@@ -469,14 +482,26 @@ def main() -> None:
                         len(events),
                     )
                     for event in events:
+                        # Save frame with image path
+                        # Force save for bus detections, optional for others
+                        is_bus = event.get("category") == "bus"
+                        image_path = save_frame(
+                            req,
+                            frame_id,
+                            event.get("raw_label", "det"),
+                            force=is_bus
+                        )
+
+                        # Add image path to event if saved
+                        if image_path:
+                            event["image_path"] = image_path
+
+                        # Log the event (with image path if available)
                         log_event(event)
 
-                        # Bus-specific handling; adjust key name if your event schema differs
-                        if event.get("category") == "bus":
+                        # Bus-specific handling
+                        if is_bus:
                             handle_bus_event(event)
-
-                        # Optionally save the frame for the first detection in this frame
-                        save_frame(req, frame_id, event.get("raw_label", "det"))
 
                 frame_id += 1
 
