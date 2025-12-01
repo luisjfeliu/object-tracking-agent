@@ -33,67 +33,31 @@ if REPO_ROOT.as_posix() not in sys.path:
 from src.agents.agents import Event, EventSummarizerAgent, parse_event_line
 from src.tracking.tracker import MultiObjectTracker
 
-
-# ADK imports are optional; handle missing dependency gracefully. We avoid treating
-# telemetry logger import failures as fatal so users with slimmer `google-adk`
-# builds can still run the ADK loop.
+# ADK imports are optional; handle missing dependency gracefully. Prefer the
+# modern `google-adk` package but keep compatibility with the older
+# `google-agents` runtime if it is present.
 AgentRuntime = None
-_adk_import_errors: List[str] = []
+ADK_IMPORT_ERROR: Optional[str] = None
 
+try:
+    from google.agents import AgentRuntime as _LegacyAgentRuntime  # type: ignore
 
-def _ensure_adk_telemetry_logger() -> Optional[Any]:
-    """Patch `google.adk.telemetry.logger` if it is missing."""
+    AgentRuntime = _LegacyAgentRuntime
+except Exception as exc:  # pragma: no cover - defensive: import differs by SDK
+    ADK_IMPORT_ERROR = f"google.agents unavailable: {exc}"
 
     try:
-        import google.adk.telemetry as telemetry  # type: ignore
+        from google.adk.telemetry import logger as _adk_logger  # type: ignore
 
-        if not hasattr(telemetry, "logger"):
-            telemetry.logger = logging.getLogger("google.adk.telemetry")  # type: ignore[attr-defined]
-        return telemetry
-    except Exception as exc:  # pragma: no cover - defensive fallback
-        _adk_import_errors.append(f"google.adk telemetry unavailable: {exc}")
-        return None
+        class AgentRuntime:  # type: ignore[override]
+            """Lightweight runtime wrapper using the `google-adk` logger."""
 
+            def log(self, message: str) -> None:
+                _adk_logger.info(message)
 
-def _resolve_logger(telemetry: Optional[Any]) -> Any:
-    if telemetry is None:
-        return None
-    if hasattr(telemetry, "logger"):
-        return telemetry.logger  # type: ignore[attr-defined]
-    for name in ("get_logger", "getLogger"):
-        getter = getattr(telemetry, name, None)
-        if callable(getter):
-            try:
-                return getter()  # type: ignore[call-arg]
-            except Exception:
-                continue
-    return None
-
-
-telemetry = _ensure_adk_telemetry_logger()
-try:
-    from google.adk.agents import AgentRuntime as _AdkAgentRuntime  # type: ignore
-
-    AgentRuntime = _AdkAgentRuntime
-except Exception as adk_exc:  # pragma: no cover - fallback to console runtime
-    _adk_import_errors.append(f"google.adk.agents AgentRuntime unavailable: {adk_exc}")
-
-    _adk_logger = _resolve_logger(telemetry)
-
-    class AgentRuntime:  # type: ignore[override]
-        """Lightweight runtime wrapper using the `google-adk` telemetry hooks."""
-
-        def log(self, message: str) -> None:
-            if hasattr(_adk_logger, "info"):
-                _adk_logger.info(message)  # type: ignore[union-attr]
-            elif callable(_adk_logger):
-                _adk_logger(message)
-            else:
-                print(f"[ADK] {message}")
-
-ADK_IMPORT_ERROR: Optional[str] = "".join(
-    [f"{err}; " for err in _adk_import_errors]
-)[:-2] or None
+    except Exception as adk_exc:  # pragma: no cover - fallback failure
+        ADK_IMPORT_ERROR = f"{ADK_IMPORT_ERROR}; google.adk unavailable: {adk_exc}"
+        AgentRuntime = None
 
 
 LOG_PATH = Path(os.environ.get("IMX500_LOG_PATH", Path.home() / "imx500_events.jsonl"))
