@@ -32,11 +32,70 @@ if REPO_ROOT.as_posix() not in sys.path:
 from src.agents.agents import Event, EventSummarizerAgent, parse_event_line
 from src.tracking.tracker import MultiObjectTracker
 
-# ADK imports are optional; handle missing dependency gracefully.
+# ADK imports are optional; handle missing dependency gracefully. Prefer the modern
+# `google-adk` package but keep compatibility with the older `google-agents`
+# runtime if it is present. We also avoid treating telemetry logger import failures
+# as fatal so users with slimmer `google-adk` builds can still run the ADK loop.
+AgentRuntime = None
+_adk_import_errors: List[str] = []
+
 try:
-    from google.agents import AgentRuntime  # type: ignore
-except Exception:  # pragma: no cover - purely defensive for missing SDK
-    AgentRuntime = None
+    from google.agents import AgentRuntime as _LegacyAgentRuntime  # type: ignore
+
+    AgentRuntime = _LegacyAgentRuntime
+except Exception as exc:  # pragma: no cover - defensive: import differs by SDK
+    _adk_import_errors.append(f"google.agents unavailable: {exc}")
+
+    try:
+        from google.adk import AgentRuntime as _AdkAgentRuntime  # type: ignore
+
+        AgentRuntime = _AdkAgentRuntime
+    except Exception as adk_runtime_exc:  # pragma: no cover - fallback to console runtime
+        _adk_import_errors.append(f"google.adk AgentRuntime unavailable: {adk_runtime_exc}")
+
+        _adk_logger = None
+        try:
+            import google.adk.telemetry as _adk_telemetry  # type: ignore
+
+            def _resolve_adk_logger():
+                # Prefer an explicit logger object if exposed, otherwise accept a getter
+                if hasattr(_adk_telemetry, "logger"):
+                    return _adk_telemetry.logger  # type: ignore[attr-defined]
+                if hasattr(_adk_telemetry, "get_logger"):
+                    try:
+                        return _adk_telemetry.get_logger()  # type: ignore[attr-defined]
+                    except Exception:
+                        pass
+                if hasattr(_adk_telemetry, "getLogger"):
+                    try:
+                        return _adk_telemetry.getLogger()  # type: ignore[attr-defined]
+                    except Exception:
+                        pass
+                return None
+
+            try:
+                _adk_logger = _resolve_adk_logger()
+            except Exception as logger_exc:  # pragma: no cover - defensive fallback
+                _adk_import_errors.append(f"google.adk telemetry logger unavailable: {logger_exc}")
+                _adk_logger = None
+        except Exception as adk_telemetry_exc:  # pragma: no cover - telemetry not present
+            _adk_import_errors.append(f"google.adk telemetry unavailable: {adk_telemetry_exc}")
+            _adk_logger = None
+
+        class AgentRuntime:  # type: ignore[override]
+            """Lightweight runtime wrapper using the `google-adk` telemetry hooks."""
+
+            def log(self, message: str) -> None:
+                if hasattr(_adk_logger, "info"):
+                    _adk_logger.info(message)  # type: ignore[union-attr]
+                elif callable(_adk_logger):
+                    _adk_logger(message)
+                else:
+                    print(f"[ADK] {message}")
+
+ADK_IMPORT_ERROR: Optional[str] = "".join(
+    [f"{err}; " for err in _adk_import_errors]
+)[:-2] or None
 
 
 LOG_PATH = Path(os.environ.get("IMX500_LOG_PATH", Path.home() / "imx500_events.jsonl"))
@@ -112,7 +171,8 @@ async def run_event_loop(use_tracker: bool = False) -> None:
 async def run_with_adk(use_tracker: bool = False) -> None:
     """Entry for ADK runtime; falls back to standalone if ADK is unavailable."""
     if AgentRuntime is None:
-        print("google-agents (ADK) not installed. Falling back to standalone loop.")
+        extra = f" ({ADK_IMPORT_ERROR})" if ADK_IMPORT_ERROR else ""
+        print(f"ADK runtime unavailable{extra}. Falling back to standalone loop.")
         await run_event_loop(use_tracker=use_tracker)
         return
 
